@@ -278,6 +278,18 @@ SET(stellarium_lib_SRCS
      translations_regions.h
 )
 
+# --- Stellarium Cardboard port (fork-specific) -------------------------------------
+# The VR/Cardboard modules live under android-port/ so they never conflict with a
+# rebase onto upstream/master. They are compiled on every platform so the host build
+# and the unit tests exercise the same code the device runs.
+SET(stellarium_lib_SRCS ${stellarium_lib_SRCS}
+     ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardComfortMath.hpp
+     ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardHeadTracking.hpp
+     ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardHeadTracking.cpp
+     ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardRenderer.hpp
+     ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardRenderer.cpp
+)
+
 IF(ENABLE_PCH)
      SET(stellarium_lib_SRCS ${stellarium_lib_SRCS}
           stelMain_pch.hpp
@@ -619,6 +631,12 @@ ELSE()
      ENDIF()
 ENDIF()
 SET_TARGET_PROPERTIES(stellarium PROPERTIES QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/android")
+# Stellarium Cardboard port: use the fork's own package dir instead of upstream's, so the
+# VR manifest features and the Java sensor helper ship without touching android/ (which
+# must stay pristine for rebasing). Guarded so a plain upstream checkout still works.
+IF(EXISTS "${CMAKE_SOURCE_DIR}/android-port/android-package/AndroidManifest.xml")
+     SET_TARGET_PROPERTIES(stellarium PROPERTIES QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/android-port/android-package")
+ENDIF()
 IF(ENABLE_PCH)
      # prepend an include to each cpp file which itself includes the most frequently used includes.
      target_precompile_headers(stelMain PRIVATE

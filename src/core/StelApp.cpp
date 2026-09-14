@@ -31,6 +31,8 @@
 #include "HipsMgr.hpp"
 #include "NebulaMgr.hpp"
 #include "LandscapeMgr.hpp"
+// Stellarium Cardboard port: VR presentation module (fork-specific).
+#include "../../android-port/src/StelCardboardRenderer.hpp"
 #include "CustomObjectMgr.hpp"
 #include "HighlightMgr.hpp"
 #include "GridLinesMgr.hpp"
@@ -653,6 +655,17 @@ void StelApp::init(QSettings* conf)
 		QString landscapeAutoName=QString("ZeroColor(%1)").arg(Vec3f(color).toStr());
 		emit core->targetLocationChanged(loc, landscapeAutoName); // inform others about our next location. E.g., let LandscapeMgr load a new landscape.
 	}
+
+	// Stellarium Cardboard port: head tracking + stereoscopic presentation.
+	// Registered here (rather than as a plugin) because it needs to run after every other
+	// draw module has rendered the sky, and because it must be active on the device
+	// without any plugin-loading configuration. On non-Android platforms the tracker
+	// reports itself inactive and this module does nothing, so desktop behaviour is
+	// unchanged. See android-port/README.md.
+	SplashScreen::showMessage(q_("Initializing Cardboard VR..."));
+	StelCardboardRenderer* cardboard = new StelCardboardRenderer();
+	cardboard->init();
+	getModuleMgr().registerModule(cardboard);
 
 	SplashScreen::showMessage(q_("Initializing grid lines..."));
 	GridLinesMgr* gridLines = new GridLinesMgr();
