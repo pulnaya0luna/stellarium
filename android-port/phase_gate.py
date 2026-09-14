@@ -53,6 +53,7 @@ CLANG_FORMAT = os.path.join(LLVM_BIN, "clang-format.exe")
 CLANG_TIDY   = os.path.join(LLVM_BIN, "clang-tidy.exe")
 CTEST        = os.path.join(CMAKE_BIN, "ctest.exe")
 CMAKE        = os.path.join(CMAKE_BIN, "cmake.exe")
+ANDROIDDEPLOYQT = r"D:/Qt/6.7.3/msvc2019_64/bin/androiddeployqt.exe"
 
 SRC_EXT = (".cpp", ".hpp", ".h", ".c", ".cc", ".cxx")
 
@@ -111,6 +112,47 @@ def format_violations(path, content=None):
         os.unlink(tmp)
 
 
+def step_apk(build_dir):
+    """Build the Android APK the way this port actually can, and verify the artifact.
+
+    Upstream's CMake target chain ends in `androiddeployqt --release`, which needs a
+    signing keystore and selects an SDK platform the bundled AGP rejects. So the gate
+    runs the equivalent debug invocation itself and checks the resulting APK really
+    contains the arm64 Stellarium engine — an artifact check, not a build log claim.
+    """
+    src_dir = os.path.join(build_dir, "src")
+    settings = os.path.join(src_dir, "android-stellarium-deployment-settings.json")
+    out_dir = os.path.join(src_dir, "android-build")
+    apk = os.path.join(out_dir, "build", "outputs", "apk", "debug", "android-build-debug.apk")
+    if not os.path.exists(settings):
+        return {"step": "APK (android-arm64, debug)", "status": "SKIP",
+                "detail": "no deployment settings yet (Android build not configured)"}
+    env = {"JAVA_HOME": r"C:/Program Files/Eclipse Adoptium/jdk-17.0.20.101-hotspot"}
+    rc, out = sh([ANDROIDDEPLOYQT,
+                  "--input", settings,
+                  "--output", out_dir,
+                  "--apk", os.path.join(out_dir, "stellarium.apk"),
+                  "--android-platform", "android-34",
+                  "--debug"], cwd=src_dir, timeout=3600, env=env)
+    if rc != 0 or not os.path.exists(apk):
+        return {"step": "APK (android-arm64, debug)", "status": "FAIL",
+                "detail": f"androiddeployqt exit={rc}, apk exists={os.path.exists(apk)}",
+                "log_tail": "\n".join(out.strip().splitlines()[-20:])}
+    size_mb = os.path.getsize(apk) / 1e6
+    # verify the engine is actually inside, not just that a file appeared
+    import zipfile
+    engine = None
+    with zipfile.ZipFile(apk) as z:
+        for n in z.namelist():
+            if n.endswith("libstellarium_arm64-v8a.so"):
+                engine = z.getinfo(n).file_size
+    ok = engine is not None
+    return {"step": "APK (android-arm64, debug)",
+            "status": "PASS" if ok else "FAIL",
+            "detail": f"{size_mb:.1f} MB, engine .so={engine} bytes" if ok
+                      else "APK built but libstellarium_arm64-v8a.so missing"}
+
+
 def step_build(build_dir, label):
     if not os.path.isdir(build_dir):
         return {"step": f"BUILD ({label})", "status": "SKIP", "detail": "build dir absent"}
@@ -124,17 +166,13 @@ def step_build(build_dir, label):
     # --release. That path needs a signing keystore (which this port does not have yet)
     # and makes Gradle pick the newest installed SDK platform, which the Qt-bundled AGP
     # cannot handle ("Failed to find Platform SDK with path: platforms;android-37").
-    # Detect that specific case and report it accurately instead of as a code failure:
-    # compilation itself succeeded.
-    if rc != 0 and "androiddeployqt" in out and "Platform SDK with path: platforms;android-37" in out:
-        detail += " — compilation OK; APK packaging step needs the debug path (see note)"
-        tail += ("\n\n[gate] androiddeployqt --release cannot work yet: no signing keystore, "
-                 "and it selects platforms;android-37 which the bundled AGP rejects.\n"
-                 "[gate] Build the APK separately with:\n"
-                 "        androiddeployqt --input android-stellarium-deployment-settings.json \\\n"
-                 "          --output android-build --apk android-build/stellarium.apk \\\n"
-                 "          --android-platform android-34 --debug\n"
-                 "[gate] See android-port/README.md and the stellarium-android-port skill.")
+    # Compilation itself succeeds; the APK is produced by step_apk() on the debug path.
+    if rc != 0 and "Platform SDK with path: platforms;android-37" in out:
+        status = "KNOWN"
+        detail = (f"exit={rc}, compile 'error:' lines={errs} — "
+                  "all code compiled; upstream's --release APK step is unsupported here "
+                  "(needs a keystore + an SDK platform the bundled AGP rejects). "
+                  "The APK is built and verified by the separate APK step.")
     return {"step": f"BUILD ({label})", "status": status, "detail": detail, "log_tail": tail}
 
 
@@ -238,6 +276,7 @@ def main():
         results.append(step_build(HOST_BUILD, "host"))
         if args.android:
             results.append(step_build(AND_BUILD, "android-arm64"))
+            results.append(step_apk(AND_BUILD))
 
     results.append(step_format(files))
     results.append(step_tidy(files))
@@ -245,7 +284,7 @@ def main():
 
     print("-" * 80)
     for r in results:
-        print(f"  [{r['status']:4}] {r['step']:36} {r['detail']}")
+        print(f"  [{r['status']:5}] {r['step']:36} {r['detail']}")
         for line in r.get("per_file", [])[:8]:
             print(f"           {line}")
         for o in r.get("offenders", [])[:8]:
@@ -255,12 +294,15 @@ def main():
     print("-" * 80)
 
     failed = [r for r in results if r["status"] == "FAIL"]
+    known = [r for r in results if r["status"] == "KNOWN"]
     skipped = [r for r in results if r["status"] == "SKIP"]
-    npass = len(results) - len(failed) - len(skipped)
+    npass = len(results) - len(failed) - len(known) - len(skipped)
     print(f"\n  RESULT: {'GATE FAILED' if failed else 'GATE PASSED'}"
-          f"   ({npass} pass, {len(failed)} fail, {len(skipped)} skip)")
+          f"   ({npass} pass, {len(failed)} fail, {len(known)} known-limit, {len(skipped)} skip)")
     for r in failed:
         print(f"    - {r['step']}: {r['detail']}")
+    for r in known:
+        print(f"    ~ {r['step']}: documented limit, not a code failure")
 
     out_dir = os.path.join(ROOT, "notes")
     os.makedirs(out_dir, exist_ok=True)
