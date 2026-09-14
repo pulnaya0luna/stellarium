@@ -1,0 +1,7 @@
+# Stellarium Cardboard port — ignore rules for fork-specific tooling.
+# Upstream's .gitignore already covers the engine; this only adds what android-port/
+# introduces, so it stays rebase-friendly.
+
+# Python bytecode from android-port/phase_gate.py — a build artifact, never source.
+__pycache__/
+*.py[cod]
