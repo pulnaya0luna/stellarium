@@ -181,7 +181,12 @@ def step_build(build_dir, label):
     # and makes Gradle pick the newest installed SDK platform, which the Qt-bundled AGP
     # cannot handle ("Failed to find Platform SDK with path: platforms;android-37").
     # Compilation itself succeeds; the APK is produced by step_apk() on the debug path.
-    if rc != 0 and "Platform SDK with path: platforms;android-37" in out:
+    #
+    # This is only a documented limit if the code actually compiled. Gate on the compile
+    # error count as well: if a real compile error ever coexists with that packaging
+    # failure, treating it as KNOWN would silently pass a broken build, which is the one
+    # thing a gate must never do.
+    if rc != 0 and errs == 0 and "Platform SDK with path: platforms;android-37" in out:
         status = "KNOWN"
         detail = (f"exit={rc}, compile 'error:' lines={errs} — "
                   "all code compiled; upstream's --release APK step is unsupported here "
