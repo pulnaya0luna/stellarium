@@ -870,6 +870,20 @@ IF(ENABLE_TESTING)
      ADD_TEST(testConversions testConversions)
      SET_TARGET_PROPERTIES(testConversions PROPERTIES FOLDER "src/tests")
 
+     # Stellarium Cardboard port: comfort-critical maths (prediction, clamping,
+     # recentring). Registered as a real CTest target so it also lands in the compile
+     # database, which is what lets clang-tidy resolve the header during the phase gate.
+     SET(tests_testCardboardComfortMath_SRCS
+          ${CMAKE_SOURCE_DIR}/android-port/test/testCardboardComfortMath.cpp
+     )
+     ADD_EXECUTABLE(testCardboardComfortMath ${tests_testCardboardComfortMath_SRCS})
+     TARGET_LINK_LIBRARIES(testCardboardComfortMath ${TESTS_LIBRARIES})
+     TARGET_INCLUDE_DIRECTORIES(testCardboardComfortMath PRIVATE
+          ${CMAKE_SOURCE_DIR}/android-port/src)
+     ADD_DEPENDENCIES(buildTests testCardboardComfortMath)
+     ADD_TEST(testCardboardComfortMath testCardboardComfortMath)
+     SET_TARGET_PROPERTIES(testCardboardComfortMath PROPERTIES FOLDER "src/tests")
+
      SET(tests_testComputations_SRCS
           tests/testComputations.hpp
           tests/testComputations.cpp

@@ -5,22 +5,22 @@
  * notes/VR-COMFORT-RESEARCH.md for the evidence behind each decision.
  */
 
-#include "StelCardboardRenderer.hpp"
 #include "StelCardboardHeadTracking.hpp"
+#include "StelCardboardRenderer.hpp"
 
-#include <StelCore.hpp>
-#include <StelMovementMgr.hpp>
 #include <StelApp.hpp>
+#include <StelCore.hpp>
 #include <StelMainView.hpp>
 #include <StelModule.hpp>
+#include <StelMovementMgr.hpp>
 #include <StelPainter.hpp>
 #include <StelProjector.hpp>
 #include <StelUtils.hpp>
 
+#include <QDebug>
 #include <QOpenGLContext>
 #include <QOpenGLExtraFunctions>
 #include <QOpenGLFunctions>
-#include <QDebug>
 #include <QtMath>
 
 StelCardboardRenderer::StelCardboardRenderer()
@@ -43,29 +43,25 @@ void StelCardboardRenderer::init()
 	headTracking->start();
 
 	qInfo() << "[Cardboard] head tracking:" << headTracking->getStatus()
-	        << "| sensor:" << headTracking->getSensorName()
-	        << "| active:" << headTracking->isActive();
+		<< "| sensor:" << headTracking->getSensorName() << "| active:" << headTracking->isActive();
 }
 
 double StelCardboardRenderer::getCallOrder(StelModuleActionName actionName) const
 {
 	// The stereo composite must run after every other module has drawn the sky, and it
 	// owns the final full-screen blit. Ordering it last keeps it from being overdrawn.
-	if (actionName == StelModule::ActionDraw)
-		return 1000.0;
+	if (actionName == StelModule::ActionDraw) return 1000.0;
 	return 0.0;
 }
 
 void StelCardboardRenderer::setStereoEnabled(bool b)
 {
-	if (stereoEnabled == b)
-		return;
+	if (stereoEnabled == b) return;
 	stereoEnabled = b;
 	// Force the core to rebuild its projection for the new viewport arrangement.
 	if (StelApp::getInstance().getCore())
 	{
-		StelApp::getInstance().getCore()->windowHasBeenResized(
-		    0, 0, screenSize.width(), screenSize.height());
+		StelApp::getInstance().getCore()->windowHasBeenResized(0, 0, screenSize.width(), screenSize.height());
 	}
 }
 
@@ -81,19 +77,18 @@ void StelCardboardRenderer::setVignetteStrength(float s)
 
 QString StelCardboardRenderer::getStatusText() const
 {
-	if (!headTracking)
-		return QStringLiteral("cardboard: not initialised");
+	if (!headTracking) return QStringLiteral("cardboard: not initialised");
 
 	QString s = QStringLiteral("cardboard %1 | hmd %2 | ipd %3mm")
-	                .arg(stereoEnabled ? QStringLiteral("stereo") : QStringLiteral("mono"))
-	                .arg(headTracking->isActive() ? QStringLiteral("on") : QStringLiteral("OFF"))
-	                .arg(ipdMm, 0, 'f', 1);
+	                    .arg(stereoEnabled ? QStringLiteral("stereo") : QStringLiteral("mono"))
+	                    .arg(headTracking->isActive() ? QStringLiteral("on") : QStringLiteral("OFF"))
+	                    .arg(ipdMm, 0, 'f', 1);
 
 	if (headTracking->isActive())
 	{
 		s += QStringLiteral(" | pred %1ms | age %2ms")
-		         .arg(headTracking->getPredictionTime() * 1000.0, 0, 'f', 1)
-		         .arg(headTracking->getSampleAge() * 1000.0, 0, 'f', 1);
+		             .arg(headTracking->getPredictionTime() * 1000.0, 0, 'f', 1)
+		             .arg(headTracking->getSampleAge() * 1000.0, 0, 'f', 1);
 	}
 	else
 	{
@@ -104,22 +99,16 @@ QString StelCardboardRenderer::getStatusText() const
 
 bool StelCardboardRenderer::ensureGlResources()
 {
-	if (glReady)
-		return true;
+	if (glReady) return true;
 
 	QOpenGLFunctions* gl = QOpenGLContext::currentContext()->functions();
-	if (!gl)
-		return false;
+	if (!gl) return false;
 
 	// Full-screen quad for the distortion composite pass.
 	static const GLfloat verts[] = {
 		// x, y, u, v
-		-1.0f, -1.0f, 0.0f, 0.0f,
-		 1.0f, -1.0f, 1.0f, 0.0f,
-		 1.0f,  1.0f, 1.0f, 1.0f,
-		-1.0f, -1.0f, 0.0f, 0.0f,
-		 1.0f,  1.0f, 1.0f, 1.0f,
-		-1.0f,  1.0f, 0.0f, 1.0f,
+		-1.0f, -1.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, 0.0f, 1.0f,  1.0f, 1.0f, 1.0f,
+		-1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f,  1.0f, 1.0f, -1.0f, 1.0f, 0.0f, 1.0f,
 	};
 
 	quadVao = new QOpenGLVertexArrayObject();
@@ -166,12 +155,10 @@ void StelCardboardRenderer::compositeToScreen()
 	// Comfort-relevant: if this mapping is wrong the user sees a subtly warped world and
 	// the eyes must fight it. That produces eye strain and headache on its own, before
 	// any nausea enters the picture.
-	if (!ensureGlResources())
-		return;
+	if (!ensureGlResources()) return;
 
 	QOpenGLFunctions* gl = QOpenGLContext::currentContext()->functions();
-	if (!distortionProgram)
-		return;
+	if (!distortionProgram) return;
 
 	distortionProgram->bind();
 	distortionProgram->setUniformValue("uLensK1", lensK1);
@@ -188,16 +175,13 @@ void StelCardboardRenderer::draw(StelCore* core)
 {
 	// This module runs last in the draw order. When stereo is off it does nothing at all,
 	// so mono rendering is byte-for-byte the upstream behaviour.
-	if (!stereoEnabled)
-		return;
+	if (!stereoEnabled) return;
 
-	if (!core)
-		return;
+	if (!core) return;
 
 	// Track the current surface size so viewport maths stays correct across rotation.
 	const QSize sz = StelMainView::getInstance().size();
-	if (sz != screenSize)
-		screenSize = sz;
+	if (sz != screenSize) screenSize = sz;
 
 	// The sky has already been drawn by the modules that ran before us. In the current
 	// bring-up stage we render the mono sky and apply the Cardboard framing; the
@@ -206,8 +190,7 @@ void StelCardboardRenderer::draw(StelCore* core)
 	//
 	// Deliberately gated: a half-working stereo path is worse for comfort than an honest
 	// mono image, because a wrong stereo pair forces the eyes to fight each other.
-	if (!headTracking || !headTracking->isActive())
-		return;
+	if (!headTracking || !headTracking->isActive()) return;
 
 	compositeToScreen();
 }
@@ -219,12 +202,10 @@ void StelCardboardRenderer::snapTurn(bool toLeft)
 	// rotation that a smooth pan would present. The jump is short enough to read as a
 	// cut rather than as motion.
 	StelCore* core = StelApp::getInstance().getCore();
-	if (!core)
-		return;
+	if (!core) return;
 
 	StelMovementMgr* mm = core->getMovementMgr();
-	if (!mm)
-		return;
+	if (!mm) return;
 
 	const double step = qDegreesToRadians(snapTurnAngle) * (toLeft ? 1.0 : -1.0);
 
@@ -232,8 +213,7 @@ void StelCardboardRenderer::snapTurn(bool toLeft)
 	// direction keeps this consistent with how the rest of the navigation code works.
 	Vec3d dir = mm->getViewDirectionJ2000();
 	// VecMath deletes length()/lengthSquared() to force norm()/normSquared().
-	if (dir.normSquared() < 1e-12)
-		return;
+	if (dir.normSquared() < 1e-12) return;
 
 	// Rotate about the observer's up axis (approximately the celestial pole for the
 	// default AltAz mount), which is what a user expects from a yaw input.

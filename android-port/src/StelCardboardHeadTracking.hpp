@@ -41,9 +41,9 @@
 #ifndef STELCARDBOARDHEADTRACKING_HPP
 #define STELCARDBOARDHEADTRACKING_HPP
 
+#include <QElapsedTimer>
 #include <QObject>
 #include <QQuaternion>
-#include <QElapsedTimer>
 #include <QTimer>
 
 //! Fused-orientation head tracker for Cardboard-style VR.
@@ -102,27 +102,27 @@ private:
 
 	// Android sensor plumbing (JNI objects kept as opaque pointers to avoid pulling
 	// JNI headers into this header).
-	void* sensorManager = nullptr;   //!< jobject SensorManager
-	void* rotationSensor = nullptr;  //!< jobject Sensor
-	void* sensorEventQueue = nullptr;//!< jobject SensorEventQueue
-	int sensorType = 0;
+	void* sensorManager    = nullptr; //!< jobject SensorManager
+	void* rotationSensor   = nullptr; //!< jobject Sensor
+	void* sensorEventQueue = nullptr; //!< jobject SensorEventQueue
+	int sensorType         = 0;
 
 	QTimer pollTimer;
 
 	QQuaternion rawOrientation;       //!< newest fused orientation, world->device
 	QQuaternion referenceOrientation; //!< orientation captured at the last recenter()
 
-	QElapsedTimer sampleClock;        //!< monotonic clock, stamped at each sample
-	qint64 lastSampleNs = 0;          //!< previous sample's clock value
-	double lastSampleInterval = 0.0;  //!< seconds between the last two samples
+	QElapsedTimer sampleClock;       //!< monotonic clock, stamped at each sample
+	qint64 lastSampleNs       = 0;   //!< previous sample's clock value
+	double lastSampleInterval = 0.0; //!< seconds between the last two samples
 
-	QQuaternion lastDelta;            //!< last observed angular delta, for prediction
+	QQuaternion lastDelta; //!< last observed angular delta, for prediction
 	bool haveDelta = false;
 
-	double predictionTime = 0.020;    //!< 20 ms: at the measured sickness threshold
+	double predictionTime = 0.020; //!< 20 ms: at the measured sickness threshold
 
-	bool active = false;
-	bool haveReading = false;
+	bool active       = false;
+	bool haveReading  = false;
 	bool androidReady = false;
 	QString status;
 	QString sensorName;

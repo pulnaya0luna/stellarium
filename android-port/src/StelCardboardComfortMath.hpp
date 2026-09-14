@@ -23,8 +23,8 @@ namespace StelCardboard
 //! Below 0 would render stale orientation (visible lag); far above 50 ms would
 //! overshoot real motion. 20 ms is the default because a US Army study found
 //! ~19 ms to be below the threshold for eliciting sickness.
-constexpr double MIN_PREDICTION_TIME = 0.0;
-constexpr double MAX_PREDICTION_TIME = 0.050;
+constexpr double MIN_PREDICTION_TIME     = 0.0;
+constexpr double MAX_PREDICTION_TIME     = 0.050;
 constexpr double DEFAULT_PREDICTION_TIME = 0.020;
 
 //! Sample intervals outside this range are rejected rather than integrated.
@@ -41,10 +41,8 @@ constexpr double MAX_PREDICTION_FACTOR = 2.0;
 //! Clamp a requested prediction horizon into the safe window.
 inline double clampPredictionTime(double seconds)
 {
-	if (seconds < MIN_PREDICTION_TIME)
-		return MIN_PREDICTION_TIME;
-	if (seconds > MAX_PREDICTION_TIME)
-		return MAX_PREDICTION_TIME;
+	if (seconds < MIN_PREDICTION_TIME) return MIN_PREDICTION_TIME;
+	if (seconds > MAX_PREDICTION_TIME) return MAX_PREDICTION_TIME;
 	return seconds;
 }
 
@@ -63,25 +61,19 @@ inline bool isUsableSampleInterval(double dt)
 //! @param predictionTime horizon in seconds (already clamped by the caller, or not)
 //! @param sampleInterval measured interval between the last two samples
 //! @return orientation to render with
-inline QQuaternion predictedOrientation(const QQuaternion& raw,
-                                        const QQuaternion& reference,
-                                        const QQuaternion& lastDelta,
-                                        bool haveDelta,
-                                        double predictionTime,
+inline QQuaternion predictedOrientation(const QQuaternion& raw, const QQuaternion& reference,
+                                        const QQuaternion& lastDelta, bool haveDelta, double predictionTime,
                                         double sampleInterval)
 {
 	// Re-express in the recentred frame first. After recenter(), the pose that was
 	// current must come out as identity -- any offset here is a visible lurch.
 	QQuaternion q = raw * reference.conjugated();
 
-	if (!haveDelta || predictionTime <= 0.0 || !isUsableSampleInterval(sampleInterval))
-		return q;
+	if (!haveDelta || predictionTime <= 0.0 || !isUsableSampleInterval(sampleInterval)) return q;
 
 	double frac = predictionTime / sampleInterval;
-	if (frac < 0.0)
-		frac = 0.0;
-	if (frac > MAX_PREDICTION_FACTOR)
-		frac = MAX_PREDICTION_FACTOR;
+	if (frac < 0.0) frac = 0.0;
+	if (frac > MAX_PREDICTION_FACTOR) frac = MAX_PREDICTION_FACTOR;
 
 	// Slerp from identity toward the observed delta, applied in the device frame.
 	const QQuaternion step = QQuaternion::slerp(QQuaternion(), lastDelta, float(frac));

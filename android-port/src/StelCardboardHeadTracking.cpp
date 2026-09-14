@@ -6,15 +6,15 @@
  * comfort evidence behind each decision.
  */
 
-#include "StelCardboardHeadTracking.hpp"
 #include "StelCardboardComfortMath.hpp"
+#include "StelCardboardHeadTracking.hpp"
 
-#include <QtMath>
 #include <QDebug>
+#include <QtMath>
 
 #ifdef Q_OS_ANDROID
-#include <QJniObject>
-#include <QJniEnvironment>
+# include <QJniEnvironment>
+# include <QJniObject>
 #endif
 
 // Poll faster than any plausible display refresh. The sensor delivers at its own rate;
@@ -40,8 +40,7 @@ StelCardboardHeadTracking::~StelCardboardHeadTracking()
 
 void StelCardboardHeadTracking::start()
 {
-	if (active)
-		return;
+	if (active) return;
 
 	sampleClock.start();
 
@@ -74,10 +73,8 @@ bool StelCardboardHeadTracking::attachSensor()
 #ifdef Q_OS_ANDROID
 	// The Java helper holds the SensorManager and keeps only the newest sample.
 	// Passing the application context lets it resolve SENSOR_SERVICE itself.
-	QJniObject context = QJniObject::callStaticObjectMethod(
-	    "org/qtproject/qt/android/QtNative",
-	    "activity",
-	    "()Landroid/app/Activity;");
+	QJniObject context = QJniObject::callStaticObjectMethod("org/qtproject/qt/android/QtNative", "activity",
+	                                                        "()Landroid/app/Activity;");
 
 	if (!context.isValid())
 	{
@@ -85,8 +82,8 @@ bool StelCardboardHeadTracking::attachSensor()
 		return false;
 	}
 
-	const jboolean ok = QJniObject::callStaticMethod<jboolean>(
-	    SENSOR_HELPER_CLASS, "start", "(Landroid/content/Context;)Z", context.object());
+	const jboolean ok = QJniObject::callStaticMethod<jboolean>(SENSOR_HELPER_CLASS, "start",
+	                                                           "(Landroid/content/Context;)Z", context.object());
 
 	if (!ok)
 	{
@@ -94,12 +91,13 @@ bool StelCardboardHeadTracking::attachSensor()
 		return false;
 	}
 
-	const QString name = QJniObject::callStaticObjectMethod(
-	    SENSOR_HELPER_CLASS, "getSensorName", "()Ljava/lang/String;").toString();
-	sensorName = name.isEmpty() ? QStringLiteral("(unnamed)") : name;
+	const QString name = QJniObject::callStaticObjectMethod(SENSOR_HELPER_CLASS, "getSensorName",
+	                                                        "()Ljava/lang/String;")
+	                             .toString();
+	sensorName         = name.isEmpty() ? QStringLiteral("(unnamed)") : name;
 
 	androidReady = true;
-	status = QStringLiteral("ok");
+	status       = QStringLiteral("ok");
 	return true;
 #else
 	status = QStringLiteral("head tracking is Android-only");
@@ -121,30 +119,26 @@ void StelCardboardHeadTracking::detachSensor()
 void StelCardboardHeadTracking::pollSensor()
 {
 #ifdef Q_OS_ANDROID
-	if (!androidReady)
-		return;
+	if (!androidReady) return;
 
 	QJniEnvironment env;
-	if (!env.isValid())
-		return;
+	if (!env.isValid()) return;
 
 	// Reuse a scratch array rather than allocating one per poll at 500 Hz.
 	static jfloatArray scratch = nullptr;
 	if (!scratch)
 	{
 		scratch = env->NewFloatArray(4);
-		if (!scratch)
-			return;
+		if (!scratch) return;
 	}
 
-	const jboolean ok = QJniObject::callStaticMethod<jboolean>(
-	    SENSOR_HELPER_CLASS, "getLatestQuaternion", "([F)Z", scratch);
+	const jboolean ok = QJniObject::callStaticMethod<jboolean>(SENSOR_HELPER_CLASS, "getLatestQuaternion", "([F)Z",
+	                                                           scratch);
 
 	if (!ok)
 	{
 		// No sample yet: normal during the first few milliseconds after registration.
-		if (!haveReading)
-			status = QStringLiteral("waiting for first sample");
+		if (!haveReading) status = QStringLiteral("waiting for first sample");
 		return;
 	}
 
@@ -162,8 +156,7 @@ void StelCardboardHeadTracking::processQuaternion(float x, float y, float z, flo
 	// Guard against a degenerate reading: some drivers emit an all-zero event before the
 	// first real one. A bad quaternion fed into the view would snap the sky somewhere
 	// arbitrary, which is both broken and nauseating.
-	const float norm = std::sqrt(q.scalar() * q.scalar() +
-	                             q.x() * q.x() + q.y() * q.y() + q.z() * q.z());
+	const float norm = std::sqrt(q.scalar() * q.scalar() + q.x() * q.x() + q.y() * q.y() + q.z() * q.z());
 	if (norm < 0.5f || !std::isfinite(norm))
 	{
 		status = QStringLiteral("degenerate quaternion; ignoring sample");
@@ -183,36 +176,30 @@ void StelCardboardHeadTracking::processQuaternion(float x, float y, float z, flo
 		if (StelCardboard::isUsableSampleInterval(dt))
 		{
 			lastSampleInterval = dt;
-			lastDelta = unit * rawOrientation.conjugated();
-			haveDelta = true;
+			lastDelta          = unit * rawOrientation.conjugated();
+			haveDelta          = true;
 		}
 	}
 	lastSampleNs = nowNs;
 
 	rawOrientation = unit;
-	haveReading = true;
-	status = QStringLiteral("ok");
+	haveReading    = true;
+	status         = QStringLiteral("ok");
 }
 
 QQuaternion StelCardboardHeadTracking::getPredictedOrientation() const
 {
-	if (!haveReading)
-		return QQuaternion();
+	if (!haveReading) return QQuaternion();
 
 	// The maths lives in StelCardboardComfortMath.hpp so the unit tests exercise exactly
 	// this code path rather than a copy of it.
-	return StelCardboard::predictedOrientation(rawOrientation,
-	                                           referenceOrientation,
-	                                           lastDelta,
-	                                           haveDelta,
-	                                           predictionTime,
-	                                           lastSampleInterval);
+	return StelCardboard::predictedOrientation(rawOrientation, referenceOrientation, lastDelta, haveDelta,
+	                                           predictionTime, lastSampleInterval);
 }
 
 double StelCardboardHeadTracking::getSampleAge() const
 {
-	if (!haveReading)
-		return 0.0;
+	if (!haveReading) return 0.0;
 	return double(sampleClock.nsecsElapsed() - lastSampleNs) / 1e9;
 }
 
@@ -226,5 +213,5 @@ void StelCardboardHeadTracking::setPredictionTime(double seconds)
 void StelCardboardHeadTracking::recenter()
 {
 	referenceOrientation = rawOrientation;
-	haveDelta = false; // the old delta is meaningless in the new frame
+	haveDelta            = false; // the old delta is meaningless in the new frame
 }

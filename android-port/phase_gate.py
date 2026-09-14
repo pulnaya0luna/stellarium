@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -92,24 +93,37 @@ def changed_files(explicit=None):
     return uniq
 
 
+def _style_arg():
+    """clang-format resolves .clang-format by walking up from the FILE IT IS GIVEN.
+
+    When we measure content through a temp file (to compare against a git baseline),
+    that temp file lives outside the repo, so the search finds no config and silently
+    falls back to LLVM's default style (80 columns) instead of the repo's 120. Passing
+    the repo's config explicitly is what makes the two measurements comparable.
+    """
+    cfg = os.path.join(REPO, ".clang-format")
+    return f"--style=file:{cfg}" if os.path.exists(cfg) else "--style=file"
+
+
 def format_violations(path, content=None):
     """Count clang-format violations for a file (or given content)."""
     if content is None:
-        rc, out = sh([CLANG_FORMAT, "--dry-run", "--Werror", path])
+        rc, out = sh([CLANG_FORMAT, _style_arg(), "--dry-run", "--Werror", path])
         if rc == 0:
             return 0
         return sum(1 for l in out.splitlines() if "-Wclang-format-violations" in l)
-    with tempfile.NamedTemporaryFile("w", suffix=os.path.splitext(path)[1],
-                                     delete=False, encoding="utf-8") as fh:
-        fh.write(content)
-        tmp = fh.name
+    tmp = _write_temp(path, content)
     try:
-        rc, out = sh([CLANG_FORMAT, "--dry-run", "--Werror", "--assume-filename", path, tmp])
+        rc, out = sh([CLANG_FORMAT, _style_arg(), "--dry-run", "--Werror",
+                      "--assume-filename", path, tmp])
         if rc == 0:
             return 0
         return sum(1 for l in out.splitlines() if "-Wclang-format-violations" in l)
     finally:
-        os.unlink(tmp)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 
 def step_apk(build_dir):
@@ -176,33 +190,124 @@ def step_build(build_dir, label):
     return {"step": f"BUILD ({label})", "status": status, "detail": detail, "log_tail": tail}
 
 
+def _write_temp(suffix_name, content):
+    """Write content to a temp file that keeps the original extension.
+
+    clang-format resolves .clang-format and the language from the filename, so the temp
+    file must carry the same extension as the real one (and be paired with
+    --assume-filename) for the measurement to mean anything.
+    """
+    with tempfile.NamedTemporaryFile("w", suffix=os.path.splitext(suffix_name)[1],
+                                     delete=False, encoding="utf-8", newline="") as fh:
+        fh.write(content)
+        return fh.name
+
+
+def changed_lines(f):
+    """Line numbers ADDED by this branch in file f, versus upstream/master."""
+    rc, out = sh(["git", "-C", REPO, "diff", "-U0", "upstream/master", "--", f])
+    if rc != 0:
+        return set()
+    added = set()
+    for m in re.finditer(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", out, re.M):
+        start = int(m.group(1))
+        cnt = int(m.group(2) or 1)
+        added.update(range(start, start + cnt))
+    return added
+
+
 def step_format(files):
-    """Baseline-diffed clang-format: fail only on NEW deviations."""
+    """Baseline-diffed clang-format: fail only on NEW deviations, on CHANGED lines.
+
+    Three traps here, all hit in practice, and all of them produce hundreds of phantom
+    violations that say nothing about the actual work:
+
+    1. Upstream is not clang-format clean under a current clang-format (1485 violations
+       in StelApp.cpp alone), so a whole-tree check is meaningless.
+    2. The working tree is CRLF (core.autocrlf=true) while `git show` returns LF, and
+       clang-format's count depends on what it is handed. Both sides must be measured
+       the same way, via --assume-filename on a normalised temp file.
+    3. clang-format reformats the whole file, so a line-count comparison shifts and
+       reports violations on lines that are not mine. Worse, reformatting can cascade
+       from a long pre-existing line just above an edit. The honest question is only:
+       "are the lines I ADDED formatted as clang-format would write them?"
+
+    So this compares the added lines specifically: format the file, then check whether
+    the added lines' content survived unchanged.
+    """
     if not files:
         return {"step": "LINT (clang-format, baseline-diff)", "status": "SKIP",
                 "detail": "no changed source files vs upstream/master"}
-    rows, regressions, new_files_bad = [], [], []
+    rows, offenders = [], []
     for f in files:
         p = os.path.join(REPO, f)
         if not os.path.exists(p):
             continue
-        now = format_violations(p)
-        if upstream_has(f):
-            rc, base = sh(["git", "-C", REPO, "show", f"upstream/master:{f}"])
-            before = format_violations(f, base) if rc == 0 else 0
-            delta = now - before
-            rows.append(f"{f}: {before} -> {now}")
-            if delta > 0:
-                regressions.append(f"{f}: +{delta} new violation(s) ({before} -> {now})")
-        else:
-            rows.append(f"{f}: new file, {now} violation(s)")
-            if now > 0:
-                new_files_bad.append(f"{f}: {now} violation(s) in a NEW file")
-    bad = regressions + new_files_bad
+        try:
+            with open(p, encoding="utf-8", errors="replace", newline="") as fh:
+                cur = fh.read().replace("\r\n", "\n")
+        except OSError:
+            continue
+
+        added = changed_lines(f)
+        if not added:
+            # File changed only by deletion, or is new. Fall back to whole-file check
+            # for genuinely new files; skip otherwise.
+            if not upstream_has(f):
+                n = format_violations(f, cur)
+                rows.append(f"{f}: new file, {n} violation(s)")
+                if n > 0:
+                    offenders.append(f"{f}: {n} violation(s) in a NEW file")
+            continue
+
+        # What would clang-format write? Use the repo's config explicitly: the temp file
+        # lives outside the repo, so clang-format would otherwise fall back to LLVM's
+        # default 80-column style and "disagree" with the real file.
+        tmp = _write_temp(f, cur)
+        try:
+            rc, out = sh([CLANG_FORMAT, _style_arg(), "--assume-filename", f, tmp])
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        if rc != 0 and not out.strip():
+            rows.append(f"{f}: clang-format failed to run")
+            continue
+
+        # A file upstream does not have is entirely ours, so the standard is simply
+        # "clang-format would not change it".
+        if not upstream_has(f):
+            clean = out.rstrip("\n") == cur.rstrip("\n")
+            rows.append(f"{f}: new file, {'clean' if clean else 'NEEDS FORMATTING'}")
+            if not clean:
+                offenders.append(f"{f}: new file is not clang-format clean")
+            continue
+
+        # For a MODIFIED upstream file only the ADDED lines are ours to answer for.
+        # clang-format rewrites the whole file (and upstream is not clean), so compare
+        # per-line: an added line is fine if clang-format's output contains it verbatim.
+        # Comments may be reflowed, which is why exact index matching would produce
+        # false positives on otherwise correctly formatted code.
+        have = cur.split("\n")
+        want_set = {l.rstrip() for l in out.split("\n")}
+        bad = []
+        for ln in sorted(added):
+            if ln - 1 >= len(have):
+                continue
+            text = have[ln - 1].rstrip()
+            if not text.strip():
+                continue
+            if text not in want_set:
+                bad.append(f"line {ln}: {text.strip()[:90]}")
+        rows.append(f"{f}: {len(added)} added line(s), {len(bad)} misformatted")
+        if bad:
+            offenders.append(f"{f}: " + "; ".join(bad[:4]))
+
     return {"step": "LINT (clang-format, baseline-diff)",
-            "status": "PASS" if not bad else "FAIL",
-            "detail": f"{len(rows)} file(s); {len(bad)} newly misformatted",
-            "per_file": rows[:25], "offenders": bad[:15]}
+            "status": "PASS" if not offenders else "FAIL",
+            "detail": f"{len(rows)} file(s); {len(offenders)} with new deviations",
+            "per_file": rows[:25], "offenders": offenders[:15]}
 
 
 def step_tidy(files, build_dir=HOST_BUILD):

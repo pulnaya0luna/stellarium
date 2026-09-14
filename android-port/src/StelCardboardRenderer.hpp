@@ -32,8 +32,8 @@
 #define STELCARDBOARDRENDERER_HPP
 
 #include "StelModule.hpp"
-#include <QOpenGLShaderProgram>
 #include <QOpenGLBuffer>
+#include <QOpenGLShaderProgram>
 #include <QOpenGLVertexArrayObject>
 #include <QSize>
 
@@ -91,18 +91,18 @@ private:
 	StelCardboardHeadTracking* headTracking = nullptr;
 
 	bool stereoEnabled = true;
-	bool glReady = false;
+	bool glReady       = false;
 
-	double ipdMm = 64.0;             //!< average adult IPD; the classic Cardboard value
-	float vignetteStrength = 0.0f;   //!< 0 by default: head rotation gets no vignette
-	double snapTurnAngle = 30.0;     //!< degrees; research suggests 30-45
+	double ipdMm           = 64.0; //!< average adult IPD; the classic Cardboard value
+	float vignetteStrength = 0.0f; //!< 0 by default: head rotation gets no vignette
+	double snapTurnAngle   = 30.0; //!< degrees; research suggests 30-45
 
 	QSize screenSize;
 
 	// Distortion composite pass
 	QOpenGLShaderProgram* distortionProgram = nullptr;
-	QOpenGLVertexArrayObject* quadVao = nullptr;
-	QOpenGLBuffer* quadVbo = nullptr;
+	QOpenGLVertexArrayObject* quadVao       = nullptr;
+	QOpenGLBuffer* quadVbo                  = nullptr;
 
 	//! Cardboard lens distortion coefficients (brown-conrady k1/k2). Defaults match the
 	//! widely used Cardboard v1-style lens; these must be tuned per viewer.

@@ -10,9 +10,9 @@
  * governs comfort here is pure maths and timing.
  */
 
-#include <QtTest/QtTest>
 #include <QQuaternion>
 #include <QtMath>
+#include <QtTest/QtTest>
 
 #include "StelCardboardComfortMath.hpp"
 
@@ -27,7 +27,7 @@ private slots:
 
 	void predictionDisabledReturnsRecentredOnly()
 	{
-		const QQuaternion raw = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 10.0);
+		const QQuaternion raw   = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 10.0);
 		const QQuaternion delta = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 1.0);
 
 		const QQuaternion out = predictedOrientation(raw, QQuaternion(), delta, true, 0.0, 0.010);
@@ -38,7 +38,7 @@ private slots:
 
 	void predictionExtrapolatesForward()
 	{
-		const QQuaternion raw = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 10.0);
+		const QQuaternion raw   = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 10.0);
 		const QQuaternion delta = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 1.0);
 
 		// 20 ms horizon at a 10 ms sample interval = 2 samples ahead = ~2 more degrees.
@@ -54,11 +54,11 @@ private slots:
 
 	void predictionIsClampedAgainstStall()
 	{
-		const QQuaternion raw = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 10.0);
+		const QQuaternion raw   = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 10.0);
 		const QQuaternion delta = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 1.0);
 
 		// An absurd horizon must clamp to MAX_PREDICTION_FACTOR x the delta, not fly off.
-		const QQuaternion out = predictedOrientation(raw, QQuaternion(), delta, true, 1.0, 0.010);
+		const QQuaternion out     = predictedOrientation(raw, QQuaternion(), delta, true, 1.0, 0.010);
 		const QQuaternion clamped = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 12.0);
 
 		QVERIFY(qAbs(out.scalar() - clamped.scalar()) < 0.01);
@@ -66,7 +66,7 @@ private slots:
 
 	void predictionWithoutDeltaDoesNotExtrapolate()
 	{
-		const QQuaternion raw = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 10.0);
+		const QQuaternion raw   = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 10.0);
 		const QQuaternion delta = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 1.0);
 
 		const QQuaternion out = predictedOrientation(raw, QQuaternion(), delta, false, 0.020, 0.010);
@@ -76,7 +76,7 @@ private slots:
 
 	void predictionRejectsUnusableSampleInterval()
 	{
-		const QQuaternion raw = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 10.0);
+		const QQuaternion raw   = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 10.0);
 		const QQuaternion delta = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 1.0);
 
 		// A stalled interval (app was backgrounded) must suppress extrapolation entirely.
@@ -95,7 +95,7 @@ private slots:
 		// After recentring, the current pose becomes "looking forward" => identity.
 		// Anything else is a visible lurch at the moment of recentring.
 		const QQuaternion current = QQuaternion::fromAxisAndAngle(QVector3D(0.3, 0.5, 0.8), 37.0);
-		const QQuaternion out = predictedOrientation(current, current, QQuaternion(), false, 0.020, 0.010);
+		const QQuaternion out     = predictedOrientation(current, current, QQuaternion(), false, 0.020, 0.010);
 
 		QVERIFY(qAbs(out.scalar() - 1.0) < 1e-6);
 		QVERIFY(qAbs(out.x()) < 1e-6);
@@ -106,7 +106,7 @@ private slots:
 	void recenterThenRotateGivesRelativeAngle()
 	{
 		const QQuaternion reference = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 90.0);
-		const QQuaternion raw = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 100.0);
+		const QQuaternion raw       = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), 100.0);
 
 		const QQuaternion out = predictedOrientation(raw, reference, QQuaternion(), false, 0.0, 0.010);
 
@@ -131,10 +131,10 @@ private slots:
 	void sampleIntervalGateMatchesSpec()
 	{
 		QVERIFY(!isUsableSampleInterval(0.0));
-		QVERIFY(isUsableSampleInterval(0.010));   // normal 100 Hz sample
-		QVERIFY(isUsableSampleInterval(0.100));   // slow device, still usable
-		QVERIFY(!isUsableSampleInterval(0.500));  // backgrounded: reject
-		QVERIFY(!isUsableSampleInterval(2.000));  // long stall: reject
+		QVERIFY(isUsableSampleInterval(0.010));  // normal 100 Hz sample
+		QVERIFY(isUsableSampleInterval(0.100));  // slow device, still usable
+		QVERIFY(!isUsableSampleInterval(0.500)); // backgrounded: reject
+		QVERIFY(!isUsableSampleInterval(2.000)); // long stall: reject
 	}
 
 	// --- snap turn contract -----------------------------------------------------
