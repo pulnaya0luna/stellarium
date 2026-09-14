@@ -440,7 +440,18 @@ SET(ENABLE_QTWEBENGINE 1 CACHE BOOL "Define whether QtWebEngine module should be
 SET(ENABLE_GPS 1 CACHE BOOL "Define whether GPS queries should be supported.")
 
 # Activate support for ShowMySky atmosphere
+# NOTE (android-port): ShowMySky is a DESKTOP-ONLY atmosphere model. Its headers pull in
+# QOpenGLFunctions_3_3_Core, which does not exist in a GLES build, so configuring it for
+# Android fails at compile time ("'QOpenGLFunctions_3_3_Core' file not found"). Stellarium
+# already compiles the whole ShowMySky module out on GLES via `#if !QT_CONFIG(opengles2)`
+# in src/core/modules/AtmosphereShowMySky.cpp, so building the dependency on Android would
+# produce nothing usable even if it compiled. Default it off there; keep upstream's default
+# (on) everywhere else so desktop behaviour is unchanged.
 SET(ENABLE_SHOWMYSKY 1 CACHE BOOL "Define whether to support ShowMySky atmosphere model if installed")
+IF(ANDROID AND ENABLE_SHOWMYSKY)
+     MESSAGE(STATUS "Disabling ShowMySky on Android (desktop-only GL; module is compiled out on GLES)")
+     SET(ENABLE_SHOWMYSKY 0)
+ENDIF()
 
 # Activate support for XLSX (Excel) files
 SET(ENABLE_XLSX 1 CACHE BOOL "Define whether to support XLSX (Excel) files")
