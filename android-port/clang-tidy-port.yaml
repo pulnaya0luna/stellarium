@@ -1,0 +1,40 @@
+---
+# Port-specific clang-tidy config — Stellarium Android/Cardboard fork.
+#
+# WHY THIS EXISTS
+#   Upstream's .clang-tidy enables '*' and sets `AnalyzeTemporaryDtors`, a key that
+#   was REMOVED in clang-tidy 12+. Modern LLVM (22.x here) refuses to parse the file:
+#       .clang-tidy:5:1: error: unknown key 'AnalyzeTemporaryDtors'
+#   so upstream's config cannot be used with a current toolchain at all. Enabling '*'
+#   is also unusable in practice — it drowns real defects in style noise.
+#
+#   This config is what the phase gate actually runs, baseline-diffed against
+#   upstream/master so only changes made by this port are judged.
+#
+# FOCUS: real defect classes, weighted toward what matters for a VR renderer
+#   (performance, memory, undefined behaviour) rather than formatting opinions.
+Checks: >
+  clang-analyzer-*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-implicit-widening-of-multiplication-result,
+  performance-*,
+  -performance-no-int-to-ptr,
+  -performance-inefficient-vector-operation,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-default-member-init,
+  misc-redundant-expression,
+  misc-throw-by-value-catch-by-reference,
+  readability-misleading-indentation,
+  readability-redundant-smartptr-get,
+  -clang-analyzer-cplusplus.NewDeleteLeaks
+WarningsAsErrors: ''
+HeaderFilterRegex: ''
+FormatStyle: none
+UseColor: false
+CheckOptions:
+  - key: modernize-use-nullptr.NullMacros
+    value: 'NULL'
+  - key: modernize-use-default-member-init.UseAssignment
+    value: '1'
