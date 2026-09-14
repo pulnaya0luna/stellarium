@@ -86,6 +86,39 @@ re-apply it after any Qt reinstall, and mirror it in `android_x86_64` if that ki
 **Device/emulator note:** the APK is **arm64-v8a only**, while the installed AVD
 (`Medium_Phone_API_36.1`) is **x86_64** — it cannot run this APK. Either build the
 `android_x86_64` kit for emulator testing, or use a physical arm64 device.
+The x86_64 kit build + install is verified working; use
+`android-port/tools/push-device-data.sh` to deploy the runtime data.
+
+## Running on Android: the app needs its data on external storage
+
+First launch dies in `StelFileMgr::init()` with
+`FATAL Couldn't find install directory location.` Stellarium expects a desktop
+install layout that does not exist on Android. Upstream *does* already have an
+Android branch in that function, searching `assets:`, `/storage/*/stellarium`,
+`/storage/*/0/stellarium` and `/sdcard/stellarium` — so the data has to be placed
+there. Use `android-port/tools/push-device-data.sh`, which handles permissions and
+all three data sets and verifies them.
+
+**Three data sets are required, and missing ones do not fail cleanly:**
+
+| Missing | Symptom |
+|---|---|
+| `data/` | `FATAL Couldn't find install directory location.` — it validates `data/ssystem_major.ini` |
+| `landscapes/` | **Stack overflow** (512 frames, all `LandscapeMgr::setCurrentLandscapeID+722`): with `zero` absent, the "unknown landscape → use 'zero'" fallback at `LandscapeMgr.cpp:920-923` recurses into itself forever |
+| `textures/` | **SIGSEGV** in `Planet::drawSphere` → `StelTexture::bind`: `rings->tex->bind(2)` (`Planet.cpp:5271,5494`) is unguarded, so Saturn's ring texture failing to load crashes the first frame |
+
+Also required: **`MANAGE_EXTERNAL_STORAGE` granted with `--uid`**. A plain
+`appops set` writes the non-uid mode and does *not* take effect; without it the app
+is denied read access to `/sdcard/stellarium` and dies in `copyDefaultConfigFile()`
+with `ERROR copyDefaultConfigFile failed to copy file .../default_cfg.ini`.
+
+**Verified running:** Stellarium launches on the x86_64 emulator, loads 895,910
+minor-planet and 2,069 comet records, creates its scene FBO at 1079x2273, and
+renders the sky (Moon and Venus labelled) over the Guereins landscape.
+
+Known cosmetic issue: network downloads fail with `TLS initialization failed`
+(Stellarium's bundled CA/OpenSSL setup), so satellite, nova and exoplanet updates
+do not run. Does not affect rendering.
 
 ## Build prerequisites (verified working)
 
