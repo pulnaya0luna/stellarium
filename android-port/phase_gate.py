@@ -116,9 +116,26 @@ def step_build(build_dir, label):
         return {"step": f"BUILD ({label})", "status": "SKIP", "detail": "build dir absent"}
     rc, out = sh([CMAKE, "--build", build_dir, "--parallel"], timeout=7200)
     errs = out.count("error:")
-    return {"step": f"BUILD ({label})", "status": "PASS" if rc == 0 else "FAIL",
-            "detail": f"exit={rc}, compile 'error:' lines={errs}",
-            "log_tail": "\n".join(out.strip().splitlines()[-15:])}
+    detail = f"exit={rc}, compile 'error:' lines={errs}"
+    status = "PASS" if rc == 0 else "FAIL"
+    tail = "\n".join(out.strip().splitlines()[-15:])
+
+    # The Android build's final step is androiddeployqt, which upstream invokes with
+    # --release. That path needs a signing keystore (which this port does not have yet)
+    # and makes Gradle pick the newest installed SDK platform, which the Qt-bundled AGP
+    # cannot handle ("Failed to find Platform SDK with path: platforms;android-37").
+    # Detect that specific case and report it accurately instead of as a code failure:
+    # compilation itself succeeded.
+    if rc != 0 and "androiddeployqt" in out and "Platform SDK with path: platforms;android-37" in out:
+        detail += " — compilation OK; APK packaging step needs the debug path (see note)"
+        tail += ("\n\n[gate] androiddeployqt --release cannot work yet: no signing keystore, "
+                 "and it selects platforms;android-37 which the bundled AGP rejects.\n"
+                 "[gate] Build the APK separately with:\n"
+                 "        androiddeployqt --input android-stellarium-deployment-settings.json \\\n"
+                 "          --output android-build --apk android-build/stellarium.apk \\\n"
+                 "          --android-platform android-34 --debug\n"
+                 "[gate] See android-port/README.md and the stellarium-android-port skill.")
+    return {"step": f"BUILD ({label})", "status": status, "detail": detail, "log_tail": tail}
 
 
 def step_format(files):

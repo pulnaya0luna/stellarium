@@ -55,6 +55,38 @@ enables defect-focused families instead: `clang-analyzer-*`, `bugprone-*`, `perf
 plus selected `modernize-`/`misc-`/`readability-` checks — weighted toward what matters for
 a VR renderer (memory, undefined behaviour, per-frame cost) rather than formatting opinions.
 
+## Android build: two known constraints
+
+**1. The APK step cannot use upstream's `--release` path yet.** Upstream's CMake invokes
+`androiddeployqt ... --release`, which (a) requires a signing keystore this port does not
+have, and (b) makes Gradle pick the newest installed SDK platform — currently
+`platforms;android-37`, which the Qt-bundled AGP rejects and which the SDK names
+`android-37.0` so Gradle cannot match it either. Compilation itself is unaffected.
+
+Build the APK on the debug path instead (auto-signed with the debug key):
+
+```bash
+cd build/android-arm64/src
+export JAVA_HOME="C:/Program Files/Eclipse Adoptium/jdk-17.0.20.101-hotspot"
+androiddeployqt --input android-stellarium-deployment-settings.json \
+  --output android-build --apk android-build/stellarium.apk \
+  --android-platform android-34 --debug
+```
+
+Verified output: `android-build/build/outputs/apk/debug/android-build-debug.apk` —
+44 MB, 142 files, 38 `arm64-v8a` `.so`s including `libstellarium_arm64-v8a.so` (36 MB).
+
+**2. Qt 6.7.3's bundled Android Gradle Plugin is too old.** Its template pins
+`com.android.tools.build:gradle:7.4.1` (caps at compileSdk 33) while Qt's own bundled
+AndroidX libs need ≥ 34 → hard failure. Patched to **AGP 8.2.2** in
+`D:/Qt/6.7.3/android_<arch>/src/android/templates/build.gradle` (original kept beside it as
+`build.gradle.orig-upstream-7.4.1`). **This is a Qt-install patch, not a repo change** —
+re-apply it after any Qt reinstall, and mirror it in `android_x86_64` if that kit is used.
+
+**Device/emulator note:** the APK is **arm64-v8a only**, while the installed AVD
+(`Medium_Phone_API_36.1`) is **x86_64** — it cannot run this APK. Either build the
+`android_x86_64` kit for emulator testing, or use a physical arm64 device.
+
 ## Build prerequisites (verified working)
 
 - **clang-tidy cannot read MSVC precompiled headers.** The host tree must be configured
