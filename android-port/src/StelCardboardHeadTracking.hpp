@@ -83,6 +83,13 @@ public:
 	double getPredictionTime() const { return predictionTime; }
 	void setPredictionTime(double seconds);
 
+	//! Smoothed estimate of the age of the newest sample at render time, seconds.
+	//! That age is the motion-to-photon latency this tracker exists to hide, so it is
+	//! surfaced as a diagnostic rather than left implicit.
+	double getMeasuredLatency() const { return measuredLatency; }
+	//! Feed back the sample age observed at render time.
+	void setMeasuredLatency(double seconds);
+
 	//! Recentre: treat the device's current orientation as "looking forward".
 	//! Comfort-relevant: lets the user start from a comfortable posture without the view
 	//! lurching, and avoids an initial reorientation that reads as forced motion.
@@ -119,7 +126,8 @@ private:
 	QQuaternion lastDelta; //!< last observed angular delta, for prediction
 	bool haveDelta = false;
 
-	double predictionTime = 0.020; //!< 20 ms: at the measured sickness threshold
+	double predictionTime  = 0.020; //!< 20 ms: at the measured sickness threshold
+	double measuredLatency = 0.0;   //!< EMA of the sample age observed at render time
 
 	bool active       = false;
 	bool haveReading  = false;

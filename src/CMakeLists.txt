@@ -284,10 +284,13 @@ SET(stellarium_lib_SRCS
 # and the unit tests exercise the same code the device runs.
 SET(stellarium_lib_SRCS ${stellarium_lib_SRCS}
      ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardComfortMath.hpp
+     ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardDistortion.hpp
      ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardHeadTracking.hpp
      ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardHeadTracking.cpp
      ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardRenderer.hpp
      ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardRenderer.cpp
+     ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardViewportEffect.hpp
+     ${CMAKE_SOURCE_DIR}/android-port/src/StelCardboardViewportEffect.cpp
 )
 
 IF(ENABLE_PCH)
@@ -883,6 +886,20 @@ IF(ENABLE_TESTING)
      ADD_DEPENDENCIES(buildTests testCardboardComfortMath)
      ADD_TEST(testCardboardComfortMath testCardboardComfortMath)
      SET_TARGET_PROPERTIES(testCardboardComfortMath PROPERTIES FOLDER "src/tests")
+
+     # Stellarium Cardboard port: lens distortion maths (Brown-Conrady inversion, eye
+     # viewports, IPD). A wrong pre-distortion is invisible in a screenshot but produces
+     # eye strain, so it is pinned down by tests.
+     SET(tests_testCardboardDistortion_SRCS
+          ${CMAKE_SOURCE_DIR}/android-port/test/testCardboardDistortion.cpp
+     )
+     ADD_EXECUTABLE(testCardboardDistortion ${tests_testCardboardDistortion_SRCS})
+     TARGET_LINK_LIBRARIES(testCardboardDistortion ${TESTS_LIBRARIES})
+     TARGET_INCLUDE_DIRECTORIES(testCardboardDistortion PRIVATE
+          ${CMAKE_SOURCE_DIR}/android-port/src)
+     ADD_DEPENDENCIES(buildTests testCardboardDistortion)
+     ADD_TEST(testCardboardDistortion testCardboardDistortion)
+     SET_TARGET_PROPERTIES(testCardboardDistortion PROPERTIES FOLDER "src/tests")
 
      SET(tests_testComputations_SRCS
           tests/testComputations.hpp

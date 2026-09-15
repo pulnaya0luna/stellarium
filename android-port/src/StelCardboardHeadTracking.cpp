@@ -210,6 +210,15 @@ void StelCardboardHeadTracking::setPredictionTime(double seconds)
 	predictionTime = StelCardboard::clampPredictionTime(seconds);
 }
 
+void StelCardboardHeadTracking::setMeasuredLatency(double seconds)
+{
+	if (seconds <= 0.0) return;
+	// Exponential moving average: smooth enough to read, responsive enough to notice a
+	// regression. Deliberately not a history buffer to keep this cheap per frame.
+	constexpr double ALPHA = 0.1;
+	measuredLatency        = (measuredLatency <= 0.0) ? seconds : (1.0 - ALPHA) * measuredLatency + ALPHA * seconds;
+}
+
 void StelCardboardHeadTracking::recenter()
 {
 	referenceOrientation = rawOrientation;

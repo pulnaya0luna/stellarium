@@ -31,8 +31,9 @@
 #include "HipsMgr.hpp"
 #include "NebulaMgr.hpp"
 #include "LandscapeMgr.hpp"
-// Stellarium Cardboard port: VR presentation module (fork-specific).
+// Stellarium Cardboard port: VR presentation modules (fork-specific).
 #include "../../android-port/src/StelCardboardRenderer.hpp"
+#include "../../android-port/src/StelCardboardViewportEffect.hpp"
 #include "CustomObjectMgr.hpp"
 #include "HighlightMgr.hpp"
 #include "GridLinesMgr.hpp"
@@ -1533,6 +1534,13 @@ void StelApp::setViewportEffect(const QString& name)
 	if (name == "sphericMirrorDistorter")
 	{
 		viewportEffect = new StelViewportDistorterFisheyeToSphericMirror(w, h);
+	}
+	// Stellarium Cardboard port: the stereo split-screen compositor. It reads its own
+	// lens/vignette settings, so this stays a one-line hook with no coupling to the
+	// port's other classes.
+	else if (name == "cardboardStereo")
+	{
+		viewportEffect = new StelCardboardViewportEffect(w, h);
 	}
 	else
 	{
