@@ -132,6 +132,20 @@ void StelCardboardHeadTracking::pollSensor()
 		if (!scratch) return;
 	}
 
+	// Ask for the sample counter first. The sensor is polled far more often than it
+	// produces samples (2 ms poll vs a ~20 ms sample period), so most polls return a
+	// repeat of a value we already processed. The counter is what distinguishes a genuinely
+	// new sample from a re-read; comparing quaternion values cannot, because a device held
+	// still legitimately reports the same orientation over and over.
+	const jlong count = QJniObject::callStaticMethod<jlong>(SENSOR_HELPER_CLASS, "getSampleCount", "()J");
+	if (count == lastSampleCount)
+	{
+		// Same sample as last poll: nothing new to integrate. Polling less often would
+		// only add latency, so we keep the fast poll and ignore the repeats.
+		return;
+	}
+	lastSampleCount = count;
+
 	const jboolean ok = QJniObject::callStaticMethod<jboolean>(SENSOR_HELPER_CLASS, "getLatestQuaternion", "([F)Z",
 	                                                           scratch);
 
@@ -166,6 +180,12 @@ void StelCardboardHeadTracking::processQuaternion(float x, float y, float z, flo
 	// Normalise: the prediction maths assumes a unit quaternion.
 	const QQuaternion unit = q / norm;
 
+	// Reached only for a genuinely NEW sample (see pollSensor), so the timestamps below
+	// measure SAMPLE-to-SAMPLE spacing. That distinction is the whole point: stamping on
+	// every poll would record the ~2 ms poll gap instead of the real ~20 ms sample period,
+	// and the prediction divides by this interval -- it would overshoot by roughly an order
+	// of magnitude, then apply nothing at all on the frames between samples. The result is
+	// a visible sawtooth rather than smooth tracking.
 	const qint64 nowNs = sampleClock.nsecsElapsed();
 	if (lastSampleNs != 0)
 	{

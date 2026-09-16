@@ -38,6 +38,19 @@ public class StelCardboardSensors implements SensorEventListener {
     private static boolean haveSample = false;
     private static final Object lock = new Object();
 
+    // Increments on every delivered sample. The C++ side polls far faster than the sensor
+    // produces samples, so it needs a reliable way to tell "this is a new sample" from
+    // "this is the same one again". Comparing quaternion values cannot do that: a device
+    // held still legitimately reports the same orientation repeatedly, and treating those
+    // repeats as new samples would corrupt the timing the prediction depends on.
+    private static long sampleCount = 0;
+
+    // The listener instance is kept so it can be unregistered again.
+    // SensorManager.unregisterListener() matches by IDENTITY, so unregistering a freshly
+    // constructed object silently matches nothing and leaves the original listener
+    // registered forever.
+    private static StelCardboardSensors listener = null;
+
     /** Start delivering orientation samples. Safe to call more than once. */
     public static boolean start(Context context) {
         if (sensorManager != null) {
@@ -53,13 +66,14 @@ public class StelCardboardSensors implements SensorEventListener {
                 sensorManager = null;
                 return false;
             }
-            StelCardboardSensors listener = new StelCardboardSensors();
+            listener = new StelCardboardSensors();
             // SENSOR_DELAY_GAME (~50 Hz) is ample for head tracking and much kinder to the
             // battery than SENSOR_DELAY_FASTEST.
             return sensorManager.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_GAME);
         } catch (Throwable t) {
             sensorManager = null;
             rotationSensor = null;
+            listener = null;
             return false;
         }
     }
@@ -68,14 +82,34 @@ public class StelCardboardSensors implements SensorEventListener {
     public static void stop() {
         if (sensorManager != null) {
             try {
-                sensorManager.unregisterListener(new StelCardboardSensors());
+                // Unregister the listener that was actually registered. Passing a new
+                // instance here would match nothing (identity comparison) and leak the
+                // registration for the lifetime of the process.
+                if (listener != null) {
+                    sensorManager.unregisterListener(listener);
+                }
             } catch (Throwable ignored) {
             }
             sensorManager = null;
             rotationSensor = null;
+            listener = null;
         }
         synchronized (lock) {
             haveSample = false;
+        }
+    }
+
+    /**
+     * How many samples have been delivered since the process started.
+     *
+     * The C++ side polls much faster than the sensor produces samples, so it uses this to
+     * detect an actually-new sample. A counter is the only reliable signal: a device held
+     * still reports identical orientations, so comparing values cannot distinguish a fresh
+     * sample from a repeated one.
+     */
+    public static long getSampleCount() {
+        synchronized (lock) {
+            return sampleCount;
         }
     }
 
@@ -123,6 +157,7 @@ public class StelCardboardSensors implements SensorEventListener {
             latest[2] = event.values[2];
             latest[3] = event.values[3];
             haveSample = true;
+            sampleCount++;
         }
     }
 

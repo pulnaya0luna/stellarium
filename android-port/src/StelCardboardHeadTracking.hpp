@@ -107,13 +107,6 @@ private:
 	void detachSensor();
 	void processQuaternion(float x, float y, float z, float w);
 
-	// Android sensor plumbing (JNI objects kept as opaque pointers to avoid pulling
-	// JNI headers into this header).
-	void* sensorManager    = nullptr; //!< jobject SensorManager
-	void* rotationSensor   = nullptr; //!< jobject Sensor
-	void* sensorEventQueue = nullptr; //!< jobject SensorEventQueue
-	int sensorType         = 0;
-
 	QTimer pollTimer;
 
 	QQuaternion rawOrientation;       //!< newest fused orientation, world->device
@@ -122,6 +115,13 @@ private:
 	QElapsedTimer sampleClock;       //!< monotonic clock, stamped at each sample
 	qint64 lastSampleNs       = 0;   //!< previous sample's clock value
 	double lastSampleInterval = 0.0; //!< seconds between the last two samples
+
+	//! Sample counter from the last poll. The sensor produces samples far more slowly than
+	//! we poll it, so this is what tells a genuinely new sample from a re-read of the same
+	//! one. Comparing quaternion values cannot: a still device reports the same orientation
+	//! repeatedly and would be mistaken for a burst of new samples.
+	//! Declared as qint64 rather than jlong so this header stays free of jni.h.
+	qint64 lastSampleCount = -1;
 
 	QQuaternion lastDelta; //!< last observed angular delta, for prediction
 	bool haveDelta = false;

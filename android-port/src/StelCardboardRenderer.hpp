@@ -62,9 +62,10 @@ public:
 	bool isStereoEnabled() const { return stereoEnabled; }
 	void setStereoEnabled(bool b);
 
-	//! Physical lens/screen description. These must match the actual viewer: they drive
-	//! both the eye offsets and the distortion correction, and a mismatch shows up as eye
-	//! strain and headache independently of nausea.
+	//! Physical lens/screen description.
+	//! NOTE: these are exposed for tuning and diagnostics but are NOT yet consumed by the
+	//! stereo compositor, which samples one shared full-rate image for both eyes. They do
+	//! not affect the rendered geometry today -- do not read them as live calibration.
 	void setInterPupillaryDistance(double mm);
 	double getInterPupillaryDistance() const { return ipdMm; }
 
