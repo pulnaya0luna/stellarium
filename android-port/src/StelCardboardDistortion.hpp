@@ -119,6 +119,64 @@ inline void preDistortNormalised(float& x, float& y, float k1, float k2)
 	y *= k;
 }
 
+//! Convert a full-screen pixel position to EYE-LOCAL normalised coordinates.
+//!
+//! The stereo renderer builds its mesh in eye-local space: each eye's half of the screen is
+//! mapped to x in -aspect..+aspect and y in -1..+1, where aspect = eyeWidth/eyeHeight. Any
+//! code that needs to agree with what is actually drawn (picking, UI overlay, distortion
+//! mapping) must use this same transform. Using full-screen normalised coordinates instead
+//! is a silent mismatch: the centre of either eye gives x = 0 here but -0.5 / +0.5 there.
+//!
+//! Y AXIS: the renderer emits ny straight into gl_Position.y, and the renderer's own
+//! comment records the convention -- "ny spans -1 (bottom) .. +1 (top)". Screen pixel
+//! coordinates put y = 0 at the TOP, so this flips the sign. Getting that backwards is
+//! invisible for the radial lens distortion (it only depends on r), but it would misplace
+//! any UI or picking that depends on vertical position, so it is pinned by a test.
+//!
+//! @param x,y        pixel position on the full screen (y = 0 at the top)
+//! @param screenW,H  full screen size in pixels
+//! @param outNx,outNy eye-local normalised position
+inline void screenToEyeLocal(double x, double y, int screenW, int screenH, float& outNx, float& outNy)
+{
+	const double eyeWidth = double(screenW) * 0.5;
+	if (eyeWidth <= 0.0 || screenH <= 0)
+	{
+		outNx = 0.0f;
+		outNy = 0.0f;
+		return;
+	}
+
+	const bool rightEye    = (x >= eyeWidth);
+	const double localX    = rightEye ? ((x - eyeWidth) / eyeWidth) : (x / eyeWidth); // 0..1 across one eye
+	const double eyeAspect = eyeWidth / double(screenH);
+
+	outNx = float((localX * 2.0 - 1.0) * eyeAspect);
+	outNy = float(1.0 - (y / double(screenH)) * 2.0); // +1 at the top, -1 at the bottom
+}
+
+//! Inverse of screenToEyeLocal: eye-local normalised back to a full-screen pixel position.
+//!
+//! The eye must be passed in rather than inferred: the distortion moves the point, so
+//! after warping it may land on the other side of the 0.5 boundary and a guess would put
+//! it in the wrong half of the screen.
+//!
+//! @param eye 0 = left, 1 = right
+inline void eyeLocalToScreen(int eye, float nx, float ny, int screenW, int screenH, double& outX, double& outY)
+{
+	const double eyeWidth = double(screenW) * 0.5;
+	if (eyeWidth <= 0.0 || screenH <= 0)
+	{
+		outX = 0.0;
+		outY = 0.0;
+		return;
+	}
+
+	const double eyeAspect = eyeWidth / double(screenH);
+	const double localX    = (double(nx) / eyeAspect) * 0.5 + 0.5; // 0..1 across one eye
+	outX                   = (eye == 0 ? 0.0 : eyeWidth) + localX * eyeWidth;
+	outY                   = (1.0 - double(ny)) * 0.5 * double(screenH); // inverse of the y flip above
+}
+
 //! Eye viewport for one half of a side-by-side stereo frame.
 //! @param eye 0 = left, 1 = right
 //! @param fullWidth full display width in pixels

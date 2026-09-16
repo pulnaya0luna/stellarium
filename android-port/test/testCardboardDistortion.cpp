@@ -268,6 +268,107 @@ private slots:
 		const int wide   = ipdScreenOffsetPixels(72.0, 120.0, 540);
 		QVERIFY2(wide > narrow, "a larger IPD must produce a larger screen offset");
 	}
+
+	// --- eye-local mapping (must agree with what the stereo renderer draws) ---------
+	//
+	// These pin the transform that distortXY() and any picking/UI code depend on. The
+	// original distortXY() used full-screen normalised coordinates while the renderer used
+	// eye-local ones, so the same pixel meant two different things and overlaid UI or
+	// picking would have been off by roughly half an eye width. These tests make that
+	// mismatch impossible to reintroduce silently.
+
+	void eyeCentreMapsToEyeLocalOrigin()
+	{
+		// The centre of EACH eye must map to x = 0 in eye-local space. This is exactly the
+		// property the old implementation violated: it produced -0.5 for the left eye and
+		// +0.5 for the right.
+		const int w = 2400;
+		const int h = 1000;
+		float nx    = 0.0f;
+		float ny    = 0.0f;
+
+		screenToEyeLocal(w * 0.25, h * 0.5, w, h, nx, ny);
+		QVERIFY2(std::abs(nx) < 1e-4f, qPrintable(QStringLiteral("left eye centre nx=%1").arg(nx)));
+		QVERIFY2(std::abs(ny) < 1e-4f, qPrintable(QStringLiteral("left eye centre ny=%1").arg(ny)));
+
+		screenToEyeLocal(w * 0.75, h * 0.5, w, h, nx, ny);
+		QVERIFY2(std::abs(nx) < 1e-4f, qPrintable(QStringLiteral("right eye centre nx=%1").arg(nx)));
+	}
+
+	void eyeLocalSpansTheAspectOnXAndUnitOnY()
+	{
+		// Each eye's own half must map to x in -aspect..+aspect and y in -1..+1, matching
+		// setupBuffers(). Off-by-a-factor here is the silent "plausible but wrong shape"
+		// class of bug.
+		//
+		// Note on boundaries: x == w/2 is the FIRST pixel of the RIGHT eye, not the right
+		// edge of the left one, so it maps to -aspect. The left eye's last pixel is w/2 - 1,
+		// which is one pixel short of +aspect. Test the actual last pixel, not the boundary.
+		const int w        = 2400;
+		const int h        = 1000;
+		const float aspect = float(w / 2) / float(h);
+
+		float nx = 0.0f;
+		float ny = 0.0f;
+
+		screenToEyeLocal(0.0, h * 0.5, w, h, nx, ny); // far left edge of the left eye
+		QVERIFY2(std::abs(nx + aspect) < 1e-4f,
+		         qPrintable(QStringLiteral("left edge nx=%1 want %2").arg(nx).arg(-aspect)));
+
+		screenToEyeLocal(double(w / 2 - 1), h * 0.5, w, h, nx, ny); // left eye's LAST pixel
+		QVERIFY2(nx > aspect - 0.01f && nx < aspect,
+		         qPrintable(QStringLiteral("left eye last pixel nx=%1").arg(nx)));
+
+		screenToEyeLocal(double(w) * 0.5, h * 0.5, w, h, nx, ny); // first pixel of the right eye
+		QVERIFY2(std::abs(nx + aspect) < 1e-4f,
+		         qPrintable(QStringLiteral("right eye first pixel nx=%1").arg(nx)));
+
+		screenToEyeLocal(double(w) * 0.5, 0.0, w, h, nx, ny); // top edge
+		QVERIFY2(std::abs(ny - 1.0f) < 1e-4f, qPrintable(QStringLiteral("top ny=%1").arg(ny)));
+
+		screenToEyeLocal(double(w) * 0.5, double(h), w, h, nx, ny); // bottom edge
+		QVERIFY2(std::abs(ny + 1.0f) < 1e-4f, qPrintable(QStringLiteral("bottom ny=%1").arg(ny)));
+	}
+
+	void eyeLocalRoundTripsThroughScreenSpace()
+	{
+		// screenToEyeLocal and eyeLocalToScreen must be inverses, or a picking hit test
+		// would drift from the drawn geometry.
+		//
+		// Tolerance: the pipeline stores nx/ny as float (they travel through the vertex
+		// buffer and shader as float), so a round trip loses float precision. At 2400 px
+		// that measured ~3e-6 px, so 0.01 px is a realistic bound and still far tighter
+		// than anything picking needs.
+		const int w   = 2400;
+		const int h   = 1000;
+		const int eye = 1;
+
+		float nx            = 0.0f;
+		float ny            = 0.0f;
+		const double startX = w * 0.8;
+		const double startY = h * 0.3;
+		screenToEyeLocal(startX, startY, w, h, nx, ny);
+
+		double backX = 0.0;
+		double backY = 0.0;
+		eyeLocalToScreen(eye, nx, ny, w, h, backX, backY);
+
+		QVERIFY2(std::abs(backX - startX) < 0.01,
+		         qPrintable(QStringLiteral("x round-trip %1 vs %2").arg(backX).arg(startX)));
+		QVERIFY2(std::abs(backY - startY) < 0.01,
+		         qPrintable(QStringLiteral("y round-trip %1 vs %2").arg(backY).arg(startY)));
+	}
+
+	void distortionKeepsTheEyeCentreFixed()
+	{
+		// The radial warp is zero at the optical centre, so a point at the eye's centre must
+		// not move at all. If it did, the whole view would be shifted.
+		float sx = 0.0f;
+		float sy = 0.0f;
+		preDistortNormalised(sx, sy, -0.22f, 0.0f);
+		QCOMPARE(sx, 0.0f);
+		QCOMPARE(sy, 0.0f);
+	}
 };
 
 QTEST_MAIN(TestCardboardDistortion)

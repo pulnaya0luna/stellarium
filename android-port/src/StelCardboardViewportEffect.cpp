@@ -341,9 +341,25 @@ void StelCardboardViewportEffect::distortXY(qreal& x, qreal& y) const
 {
 	// Map a screen point through the same lens warp used for rendering, so picking and
 	// any UI drawn on top lines up with what the user sees.
-	float nx = float((x / screenW) * 2.0 - 1.0);
-	float ny = float((y / screenH) * 2.0 - 1.0);
-	StelCardboard::preDistortNormalised(nx, ny, lensK1, lensK2);
-	x = (qreal(nx) * 0.5 + 0.5) * screenW;
-	y = (qreal(ny) * 0.5 + 0.5) * screenH;
+	//
+	// This must match setupBuffers() EXACTLY, and it previously did not. The renderer works
+	// in EYE-LOCAL space: a point is expressed relative to its own eye's centre and scaled
+	// by the eye aspect (see the nx/ny computation there). This function instead used
+	// full-screen normalised coordinates, so the same physical pixel produced a different
+	// normalised position -- at the centre of either eye, rendering has nx = 0 while this
+	// gave nx = -0.5 (left) or +0.5 (right). Picking and any overlaid UI would therefore be
+	// misaligned by roughly half an eye width, growing toward the edges.
+	//
+	// Two steps: convert to the eye's own local space, then apply the same radial warp.
+	const int eye = (x >= screenW * 0.5) ? 1 : 0;
+
+	float nx = 0.0f;
+	float ny = 0.0f;
+	StelCardboard::screenToEyeLocal(x, y, screenW, screenH, nx, ny);
+
+	float sx = nx;
+	float sy = ny;
+	StelCardboard::preDistortNormalised(sx, sy, lensK1, lensK2);
+
+	StelCardboard::eyeLocalToScreen(eye, sx, sy, screenW, screenH, x, y);
 }
