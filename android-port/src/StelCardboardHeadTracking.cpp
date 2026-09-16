@@ -6,8 +6,8 @@
  * comfort evidence behind each decision.
  */
 
-#include "StelCardboardComfortMath.hpp"
 #include "StelCardboardHeadTracking.hpp"
+#include "StelCardboardComfortMath.hpp"
 
 #include <QDebug>
 #include <QtMath>

@@ -167,10 +167,41 @@ def step_apk(build_dir):
                       else "APK built but libstellarium_arm64-v8a.so missing"}
 
 
+def _build_cmd(build_dir):
+    """Build command for `build_dir`, with the MSVC environment set up for host builds.
+
+    MSVC link steps need LIB/INCLUDE (and the Windows SDK paths) from vcvars64.bat. A bare
+    `cmake --build` inherits none of that, so linking dies on 'cannot open input file
+    kernel32.lib' -- an environment failure that would be misread as a code failure. Only
+    host builds need this; the Android toolchain supplies its own environment.
+    """
+    plain = [CMAKE, "--build", build_dir, "--parallel"]
+    vcvars = r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+    if os.path.normcase(os.path.abspath(build_dir)).endswith(os.path.normcase("host")) \
+            and os.path.exists(vcvars):
+        # Go through a temp .bat rather than `cmd /c call "..." && ...`: passing that as an
+        # argument list makes subprocess escape the quotes, and cmd then fails with
+        # "'"C:\...\vcvars64.bat"' is not recognized". A batch file is also how the
+        # project's own build scripts do it, so the gate exercises the same path.
+        bat = os.path.join(tempfile.gettempdir(), "stellarium_gate_build.bat")
+        with open(bat, "w", encoding="ascii", newline="\r\n") as fh:
+            fh.write("@echo off\n")
+            fh.write(f'call "{vcvars}" >nul\n')
+            fh.write("if errorlevel 1 exit /b 1\n")
+            fh.write(subprocess.list2cmdline(plain) + "\n")
+        return [bat]
+    return plain
+
+
 def step_build(build_dir, label):
     if not os.path.isdir(build_dir):
         return {"step": f"BUILD ({label})", "status": "SKIP", "detail": "build dir absent"}
-    rc, out = sh([CMAKE, "--build", build_dir, "--parallel"], timeout=7200)
+    # The host build needs the MSVC environment. Without it, linking fails with
+    # "LNK1181: cannot open input file 'kernel32.lib'" -- the Windows SDK library
+    # directories come from vcvars64.bat, which a plain `cmake --build` never sees.
+    # That failure has nothing to do with the code under test, so the gate must set the
+    # environment up the same way a developer's build script does.
+    rc, out = sh(_build_cmd(build_dir), timeout=7200)
     errs = out.count("error:")
     detail = f"exit={rc}, compile 'error:' lines={errs}"
     status = "PASS" if rc == 0 else "FAIL"
@@ -247,6 +278,11 @@ def step_format(files):
     for f in files:
         p = os.path.join(REPO, f)
         if not os.path.exists(p):
+            # A file that cannot be found is NOT a pass. Reporting PASS after skipping
+            # everything is a false green: the gate would claim it verified code it never
+            # read. Callers pass repo-relative paths, so a miss means the path is wrong.
+            rows.append(f"{f}: NOT FOUND under {REPO}")
+            offenders.append(f"{f}: file does not exist (path must be repo-relative)")
             continue
         try:
             with open(p, encoding="utf-8", errors="replace", newline="") as fh:
@@ -265,17 +301,17 @@ def step_format(files):
                     offenders.append(f"{f}: {n} violation(s) in a NEW file")
             continue
 
-        # What would clang-format write? Use the repo's config explicitly: the temp file
-        # lives outside the repo, so clang-format would otherwise fall back to LLVM's
-        # default 80-column style and "disagree" with the real file.
-        tmp = _write_temp(f, cur)
-        try:
-            rc, out = sh([CLANG_FORMAT, _style_arg(), "--assume-filename", f, tmp])
-        finally:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+        # What would clang-format write? This must be asked with the file AT ITS REAL
+        # PATH. clang-format's answer depends on the file's own name and location:
+        #   * "main header" detection -- in Foo.cpp, Foo.hpp must come FIRST, ahead of
+        #     other local headers. Through a temp file that detection fails, so
+        #     clang-format falls back to alphabetical order and disagrees with itself.
+        #   * .clang-format resolution walks up from the file's directory.
+        # Measured: with a temp file the check never converges (it reports one order,
+        # the real file another), so a file could be simultaneously "clean" and
+        # "misformatted" depending on how it was asked. Formatting the real path to
+        # stdout asks the question exactly as a developer's editor would.
+        rc, out = sh([CLANG_FORMAT, _style_arg(), p])
         if rc != 0 and not out.strip():
             rows.append(f"{f}: clang-format failed to run")
             continue
@@ -363,7 +399,7 @@ def step_tests(build_dir, label, regex=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--phase", default="?")
+    ap.add_argument("--phase", default="0")
     ap.add_argument("--skip-build", action="store_true")
     ap.add_argument("--files", nargs="*", default=None)
     ap.add_argument("--android", action="store_true", help="also gate the Android build")

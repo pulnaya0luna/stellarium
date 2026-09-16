@@ -4,8 +4,8 @@
  * notes/VR-COMFORT-RESEARCH.md for the evidence behind each decision.
  */
 
-#include "StelCardboardDistortion.hpp"
 #include "StelCardboardViewportEffect.hpp"
+#include "StelCardboardDistortion.hpp"
 
 #include <StelApp.hpp>
 #include <StelCore.hpp>

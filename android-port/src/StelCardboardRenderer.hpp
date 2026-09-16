@@ -92,6 +92,9 @@ private:
 	void removeEffect();
 	//! Rotate the view by the change in head orientation since the previous frame.
 	void applyHeadOrientation(StelCore* core);
+	//! Ask Android for the fastest display mode (no-op off Android). Android gives an app
+	//! the display's DEFAULT mode -- usually 60 Hz even on a 120 Hz panel -- unless asked.
+	void requestHighestRefreshRate();
 
 	StelCardboardHeadTracking* headTracking = nullptr;
 

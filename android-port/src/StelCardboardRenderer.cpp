@@ -4,8 +4,8 @@
  * notes/VR-COMFORT-RESEARCH.md for the evidence behind each decision.
  */
 
-#include "StelCardboardHeadTracking.hpp"
 #include "StelCardboardRenderer.hpp"
+#include "StelCardboardHeadTracking.hpp"
 #include "StelCardboardViewportEffect.hpp"
 
 #include <StelApp.hpp>
@@ -19,6 +19,10 @@
 #include <QDebug>
 #include <QSettings>
 #include <QtMath>
+
+#ifdef Q_OS_ANDROID
+# include <QJniObject>
+#endif
 
 StelCardboardRenderer::StelCardboardRenderer()
 {
@@ -39,6 +43,13 @@ void StelCardboardRenderer::init()
 	// never to a dead app.
 	headTracking = new StelCardboardHeadTracking(this);
 	headTracking->start();
+
+	// The display's DEFAULT mode is usually 60 Hz even on a 120 Hz panel: Android does not
+	// hand an app the fast mode unless it asks. Requesting it is one of the cheapest comfort
+	// wins available, because the refresh rate sets a hard floor on motion-to-photon latency
+	// (16.67 ms at 60 Hz vs 8.33 ms at 120 Hz) and our sickness threshold is around 20 ms.
+	// Qt exposes no API for this, so it goes through the Java helper.
+	requestHighestRefreshRate();
 
 	QSettings* conf = StelApp::getInstance().getSettings();
 	if (conf)
@@ -178,6 +189,37 @@ void StelCardboardRenderer::draw(StelCore* core)
 	// frame, so a dropped frame simply means a slightly larger increment rather than a
 	// jump.
 	applyHeadOrientation(core);
+}
+
+void StelCardboardRenderer::requestHighestRefreshRate()
+{
+#ifdef Q_OS_ANDROID
+	// Ask Android for the fastest display mode. Without this an app gets the display's
+	// DEFAULT mode, which is usually 60 Hz even on a 120 Hz panel.
+	//
+	// This matters because the refresh rate is a hard floor on motion-to-photon latency:
+	// 16.67 ms at 60 Hz, 8.33 ms at 120 Hz. With a ~20 ms sickness threshold, the 60 Hz
+	// interval alone would consume 83% of the budget before any sensor or render cost.
+	// The request is posted to the Android UI thread, so it completes asynchronously; the
+	// outcome is reported by the Java side under the "StelCardboardDisplay" log tag. Here we
+	// only confirm the call was made and record the rate in effect at this moment.
+	QJniObject activity = QJniObject::callStaticObjectMethod("org/qtproject/qt/android/QtNative", "activity",
+	                                                         "()Landroid/app/Activity;");
+	if (!activity.isValid())
+	{
+		qWarning() << "[Cardboard] no Android activity; cannot request a display mode";
+		return;
+	}
+
+	QJniObject::callStaticMethod<void>("org/qtproject/qt/android/StelCardboardDisplay", "requestHighestRefreshRate",
+	                                   "(Landroid/app/Activity;)V", activity.object());
+
+	const jfloat cur = QJniObject::callStaticMethod<jfloat>("org/qtproject/qt/android/StelCardboardDisplay",
+	                                                        "getCurrentRefreshRate", "(Landroid/app/Activity;)F",
+	                                                        activity.object());
+	qInfo().nospace() << "[Cardboard] requested the highest display mode; currently " << cur
+			  << " Hz (outcome reported under the StelCardboardDisplay log tag)";
+#endif
 }
 
 void StelCardboardRenderer::applyHeadOrientation(StelCore* core)
