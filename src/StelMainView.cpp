@@ -21,6 +21,7 @@
 
 #include "StelMainView.hpp"
 #include "StelApp.hpp"
+#include "../../android-port/src/StelCardboardRenderer.hpp"
 #include "StelCore.hpp"
 #include "StelFileMgr.hpp"
 #include "StelProjector.hpp"
@@ -410,7 +411,12 @@ protected:
 		// the app first gets device pixel ratio of 200%, then the widgets are rescaled to 150%
 		// while the screen still remains at 200%. This is ugly, and shouldn't behave like this,
 		// but the following call seems to be enough to get things working right.
-		app.setDevicePixelsPerPixel(mainView->devicePixelRatioF());
+		// Stellarium Cardboard port: the window system's ratio is passed through the
+		// port's scale hook, which multiplies it by cardboard/render_scale (1.0 =
+		// unchanged). The scene FBO is sized from this ratio, so this is the single
+		// point where the render resolution is actually decided -- an init-time
+		// override is overwritten here on every frame.
+		app.setDevicePixelsPerPixel(StelCardboardRenderer::scaleDevicePixelRatio(mainView->devicePixelRatioF()));
 
 		const double now = StelApp::getTotalRunTime();
 		double dt = now - previousPaintTime;
@@ -1624,7 +1630,7 @@ void StelMainView::moveEvent(QMoveEvent * event)
 
 	if (StelApp::isInitialized())
 	{
-		const qreal dpp = devicePixelRatio();
+		const qreal dpp = StelCardboardRenderer::scaleDevicePixelRatio(devicePixelRatio());
 		stelApp->setDevicePixelsPerPixel(dpp);
 
 		StelApp::immediateSave("video/screen_x", int(std::lround(pos.x()*dpp)));

@@ -85,6 +85,15 @@ public:
 	//! Access the tracker (diagnostics overlay, tests).
 	StelCardboardHeadTracking* getHeadTracking() const { return headTracking; }
 
+	//! Adjust the device pixel ratio used for the scene FBO. Called from StelMainView's
+	//! paint path (which resets the ratio from the window system every frame), so the
+	//! scale has to be applied there rather than once at init -- an init-time value is
+	//! overwritten before the first FBO is ever created. Multiplies by
+	//! cardboard/render_scale; identity on non-Android.
+	static qreal scaleDevicePixelRatio(qreal dpp);
+	//! Config-sourced scale factor, shared by the static hook (readable without an instance).
+	static qreal renderScaleStatic();
+
 	//! Human-readable status line for diagnostics.
 	QString getStatusText() const;
 
@@ -97,6 +106,14 @@ private:
 	//! the display's DEFAULT mode -- usually 60 Hz even on a 120 Hz panel -- unless asked.
 	void requestHighestRefreshRate();
 
+	//! Scale the scene render resolution down by renderScale (config cardboard/render_scale).
+	//! The measured baseline is 18.1 FPS on the target phone with the scene FBO at full
+	//! panel resolution (3.3 Mpx) -- GPU fill-bound. The sky is point stars and smooth
+	//! gradients and survives downscale far better than the pixel count costs. Uses
+	//! upstream's own setDevicePixelsPerPixel so the FBO, projector and the compositor
+	//! (which reads devicePixelsPerPixel) all stay consistent. No-op at scale 1.0.
+	void applyRenderScale();
+
 	StelCardboardHeadTracking* headTracking = nullptr;
 
 	bool stereoEnabled   = true;
@@ -106,6 +123,7 @@ private:
 	float vignetteStrength = 0.0f; //!< 0 by default: head rotation gets no vignette
 	double snapTurnAngle   = 30.0; //!< degrees; research suggests 30-45
 	double vrFov           = 95.0; //!< degrees; Cardboard lenses are roughly 90-100
+	double renderScale     = 1.0;  //!< fraction of native resolution to render the scene at
 
 	QSize screenSize;
 

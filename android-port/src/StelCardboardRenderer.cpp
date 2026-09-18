@@ -59,7 +59,10 @@ void StelCardboardRenderer::init()
 		vignetteStrength = qBound(0.0f, conf->value("cardboard/vignette", 0.0f).toFloat(), 1.0f);
 		snapTurnAngle    = conf->value("cardboard/snap_turn_deg", 30.0).toDouble();
 		vrFov            = qBound(60.0, conf->value("cardboard/fov", 95.0).toDouble(), 120.0);
+		renderScale      = qBound(0.4, conf->value("cardboard/render_scale", 1.0).toDouble(), 1.0);
 	}
+
+	applyRenderScale();
 
 	qInfo() << "[Cardboard] head tracking:" << headTracking->getStatus()
 		<< "| sensor:" << headTracking->getSensorName() << "| active:" << headTracking->isActive();
@@ -189,6 +192,48 @@ void StelCardboardRenderer::draw(StelCore* core)
 	// frame, so a dropped frame simply means a slightly larger increment rather than a
 	// jump.
 	applyHeadOrientation(core);
+}
+
+qreal StelCardboardRenderer::scaleDevicePixelRatio(qreal dpp)
+{
+	// StelMainView re-derives the device pixel ratio from the window system on every
+	// paint (and on move events), so this is the ONLY hook that survives: an init-time
+	// setDevicePixelsPerPixel() is overwritten before the scene FBO is first created
+	// (measured on device: '3 -> 1.8' at init, then '1.8 -> 3' at the first paint).
+#ifdef Q_OS_ANDROID
+	const qreal scale = renderScaleStatic();
+	return dpp * scale;
+#else
+	Q_UNUSED(dpp);
+	return 1.0; // host: no scaling; keep tests and desktop behaviour untouched
+#endif
+}
+
+qreal StelCardboardRenderer::renderScaleStatic()
+{
+	static const qreal s = qBound(0.4,
+	    StelApp::getInstance().getSettings()
+	        ? StelApp::getInstance().getSettings()->value("cardboard/render_scale", 1.0).toDouble()
+	        : 0.6, 1.0);
+	return s;
+}
+
+void StelCardboardRenderer::applyRenderScale()
+{
+	StelCore* core = StelApp::getInstance().getCore();
+	if (!core || renderScale >= 1.0) return;
+
+	// Multiply the device pixel ratio by the scale: upstream derives the scene FBO size
+	// from viewport * devicePixelsPerPixel, and our compositor converts its mesh size the
+	// same way, so changing the ratio through upstream's own setter keeps every consumer
+	// consistent (it also tears down and recreates the viewport effect safely).
+	StelProjector::StelProjectorParams params = core->getCurrentStelProjectorParams();
+	const double scaled                       = params.devicePixelsPerPixel * renderScale;
+	if (scaled <= 0.0) return;
+
+	StelApp::getInstance().setDevicePixelsPerPixel(scaled);
+	qInfo().nospace() << "[Cardboard] render scale " << renderScale << ": devicePixelsPerPixel "
+			  << params.devicePixelsPerPixel << " -> " << scaled;
 }
 
 void StelCardboardRenderer::requestHighestRefreshRate()
